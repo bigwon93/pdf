@@ -1,0 +1,528 @@
+import os
+import sys
+import shutil
+from PyPDF2 import PdfReader, PdfWriter
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+
+class MainWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        
+        main_label = QLabel("<b>PDF App </b>")
+        main_label.setStyleSheet("Color : gray")
+        main_label.setFont(QFont("", 28))
+
+        hbox = QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addWidget(main_label)
+        hbox.addStretch(1)
+
+        description_label = QLabel("\n""\n""작업을 시작하시기 전\n""저장 경로를 가급적 지정해주세요\n""여러개의 PDF 파일을 한번에 올릴 수 있습니다.\n""순서에 유의해 주세요. 순서대로 작업이 진행됩니다.\n"
+                                   "\n""PDF 분할하기 버튼을 누를 시 리스트에 있는\n""모든 PDF가 분할됩니다. 유의해주세요.\n""\n자동합치기는 왼쪽리스트와 오른쪽리스트를 \n""한개씩 하나로 합치는 기능입니다\n"
+                                   "두개의 파일만 합치고 파일명은 오른쪽에 있는 파일명입니다\n")
+        description_label.setStyleSheet("Color : gray")
+        description_label.setFont(QFont("", 14))
+        description_label.setAlignment(Qt.AlignCenter)
+        description_label.setWordWrap(True)
+
+        hbox_desc = QHBoxLayout()
+        hbox_desc.addStretch(1)
+        hbox_desc.addWidget(description_label)
+        hbox_desc.addStretch(1)
+
+        vbox = QVBoxLayout()
+        vbox.addStretch(1)
+        vbox.addLayout(hbox)  
+        vbox.addLayout(hbox_desc)  
+        vbox.addStretch(4)
+
+        self.setLayout(vbox)
+
+class ListboxWidget1(QListWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.file_paths = {} 
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls:
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+            for url in event.mimeData().urls():
+                file_path = url.toLocalFile() if url.isLocalFile() else url.toString()
+                if file_path.lower().endswith('.pdf'):
+                    file_name = os.path.basename(file_path)
+                    self.addItems([file_name])
+                    self.file_paths[file_name] = file_path 
+
+    def get_selected_file_paths(self):
+        selected_items = self.selectedItems()
+        file_paths = [self.file_paths[item.text()] for item in selected_items]
+        return file_paths
+
+class ListboxWidget2(QListWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.left_paths = {}  
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls:
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+            for url in event.mimeData().urls():
+                left_path = url.toLocalFile() if url.isLocalFile() else url.toString()
+                if left_path.lower().endswith('.pdf'):
+                    file_name = os.path.basename(left_path)
+                    self.addItems([file_name])
+                    self.left_paths[file_name] = left_path  
+
+    def get_selected_file_paths(self):
+        selected_items = self.selectedItems()
+        file_paths = [self.left_paths[item.text()] for item in selected_items] 
+        return file_paths
+
+class ListboxWidget3(QListWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.right_paths = {} 
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls:
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+            for url in event.mimeData().urls():
+                right_path = url.toLocalFile() if url.isLocalFile() else url.toString()
+                if right_path.lower().endswith('.pdf'):
+                    file_name = os.path.basename(right_path)
+                    self.addItems([file_name])
+                    self.right_paths[file_name] = right_path  
+
+    def get_selected_file_paths(self):
+        selected_items = self.selectedItems()
+        file_paths = [self.right_paths[item.text()] for item in selected_items]  
+        return file_paths
+
+
+
+class PDFManagement(QWidget):
+    save_path = None
+
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setupButtons()
+        self.setupListbox()
+        self.setupConnections()
+
+    def setupButtons(self):
+        self.mergeButton = QPushButton("PDF 합치기", self)
+        self.mergeButton.setGeometry(QRect(20, 440, 200, 31))
+
+        self.splitButton = QPushButton("PDF 분할하기", self)
+        self.splitButton.setGeometry(QRect(250, 440, 200, 31))
+
+        self.groupBox = QGroupBox("<PDF 리스트>", self)
+        self.groupBox.setGeometry(QRect(20, 20, 451, 410))
+
+        self.upButton = QPushButton("위 이동", self.groupBox)
+        self.upButton.setGeometry(QRect(20, 310, 93, 28))
+
+        self.downButton = QPushButton("아래 이동", self.groupBox)
+        self.downButton.setGeometry(QRect(20, 350, 93, 28))
+
+        self.addButton = QPushButton("추가", self.groupBox)
+        self.addButton.setGeometry(QRect(180, 310, 93, 71))
+
+        self.removeButton = QPushButton("제거", self.groupBox)
+        self.removeButton.setGeometry(QRect(340, 310, 93, 71))
+
+        self.useLastPDFNameCheckbox = QCheckBox("마지막 PDF 이름 사용", self)
+        self.useLastPDFNameCheckbox.setGeometry(QRect(20, 400, 200, 31))
+
+    def setupListbox(self):
+        self.listWidget = ListboxWidget1(self.groupBox)
+        self.listWidget.setGeometry(QRect(20, 30, 411, 250))
+
+    def setupConnections(self):
+        self.addButton.clicked.connect(self.add_PDF)
+        self.removeButton.clicked.connect(self.del_PDF)
+        self.upButton.clicked.connect(self.up_PDF)
+        self.downButton.clicked.connect(self.down_PDF)
+        self.mergeButton.clicked.connect(self.merge_PDF)
+        self.splitButton.clicked.connect(self.split_PDF)
+        
+    def add_PDF(self):
+        file_dialog = QFileDialog(self, "파일 열기", "", "PDF 파일(*.pdf)")
+        file_dialog.setFileMode(QFileDialog.ExistingFiles)
+        self.selected_list_widget = self.listWidget
+
+        if file_dialog.exec_():
+            selected_files = file_dialog.selectedFiles()
+            for file_path in selected_files:
+                if not os.path.isdir(file_path):
+                    file_name = os.path.basename(file_path)
+                    self.listWidget.addItem(file_name)
+                    self.listWidget.file_paths[file_name] = file_path
+
+
+    def del_PDF(self):
+        selected_items = self.listWidget.selectedItems()
+        for item in selected_items:
+            self.listWidget.takeItem(self.listWidget.row(item))
+
+    def up_PDF(self):
+        row = self.listWidget.currentRow()
+        if row > 0:
+            item = self.listWidget.takeItem(row)
+            self.listWidget.insertItem(row - 1, item)
+            self.listWidget.setCurrentRow(row - 1)
+
+    def down_PDF(self):
+        row = self.listWidget.currentRow()
+        if row < self.listWidget.count() - 1:
+            item = self.listWidget.takeItem(row)
+            self.listWidget.insertItem(row + 1, item)
+            self.listWidget.setCurrentRow(row + 1)
+
+    def merge_PDF(self):
+        count = self.listWidget.count()
+
+        if count == 0:
+            QMessageBox.information(self, '경고', "저장할 파일이 없습니다.", QMessageBox.Yes)
+            return
+
+        if PDFManagement.save_path:
+            # 마지막 PDF 이름 사용 체크 여부 확인
+            use_last_name = self.useLastPDFNameCheckbox.isChecked()
+            if use_last_name:
+                default_name = self.listWidget.item(count - 1).text().split('/')[-1]
+                down_path = os.path.join(PDFManagement.save_path, default_name)  # 저장 경로와 파일 이름 조합
+            else:
+                # 사용자가 직접 파일 이름 지정
+                file_dialog = QFileDialog(self, "저장할 파일 선택", PDFManagement.save_path, "PDF 파일(*.pdf)")
+                if file_dialog.exec_():
+                    down_path = file_dialog.selectedFiles()[0]
+                    # 사용자가 제공한 파일 이름이 .pdf로 끝나지 않으면 .pdf 확장자를 추가
+                    if not down_path.lower().endswith('.pdf'):
+                        down_path += '.pdf'
+                else:
+                    return
+
+            output = PdfWriter()
+            for x in range(count):
+                file_name = self.listWidget.item(x).text()  
+                file_path = self.listWidget.file_paths[file_name] 
+                inputs = PdfReader(open(file_path, "rb"))
+                for j in range(len(inputs.pages)):
+                    output.add_page(inputs.pages[j])
+
+            with open(down_path, "wb") as outstream:
+                output.write(outstream)
+
+            self.listWidget.clear()
+            QMessageBox.information(self, '성공', "PDF가 성공적으로 합쳐졌습니다.", QMessageBox.Yes)
+        else:
+            QMessageBox.information(self, '경고', "저장 경로를 먼저 설정해주세요.", QMessageBox.Yes)
+
+    def split_PDF(self):
+        count = self.listWidget.count()
+
+        if count == 0:
+            QMessageBox.information(self, '경고', "분할할 파일이 없습니다.", QMessageBox.Yes)
+            return
+
+        if PDFManagement.save_path:
+            save_dir = PDFManagement.save_path
+        else:
+            save_dir = QFileDialog.getExistingDirectory(self, "저장 폴더 선택")
+
+        if save_dir:
+            for x in range(count):
+                file_name = self.listWidget.item(x).text()  
+                file_path = self.listWidget.file_paths[file_name] 
+                inputs = PdfReader(open(file_path, "rb"))
+                file_name = file_path.split('/')[-1].replace('.pdf', '')  # 파일 이름 추출
+                for page_num in range(len(inputs.pages)):
+                    output = PdfWriter()
+                    output.add_page(inputs.pages[page_num])
+                    page_name = f"{file_name} {page_num + 1}.pdf"  # 파일 이름 뒤에 페이지 번호 추가
+                    output_path = os.path.join(save_dir, page_name)
+                    with open(output_path, "wb") as outstream:
+                        output.write(outstream)
+
+            self.listWidget.clear()
+            QMessageBox.information(self, '성공', "PDF가 성공적으로 분할되었습니다.", QMessageBox.Yes)
+
+class PDFautoManagement(QWidget):
+    save_path = None
+
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+        self.setAcceptDrops(True)
+        self.last_selected_widget = None
+        self.left_sort_ascending = True  
+        self.right_sort_ascending = True 
+        self.initial_save_path = None  
+
+    def initUI(self):
+        self.setupButtons()
+        self.setupListboxes()
+        self.setupConnections()
+        self.selected_list_widget = None
+        self.setAcceptDrops(True)
+
+    def setupButtons(self):
+        self.mergeSameNamePDFButton = QPushButton("PDF-PDF 자동 합치기", self)
+        self.mergeSameNamePDFButton.setGeometry(QRect(20, 440, 430, 62))
+
+        self.groupBox = QGroupBox("<PDF 리스트>", self)
+        self.groupBox.setGeometry(QRect(20, 20, 451, 410))
+
+        self.addButton = QPushButton("추가", self.groupBox)
+        self.addButton.setGeometry(QRect(20, 310, 80, 32))
+
+        self.removeButton = QPushButton("제거", self.groupBox)
+        self.removeButton.setGeometry(QRect(120, 310, 80, 32))
+
+        self.add2Button = QPushButton("추가", self.groupBox)
+        self.add2Button.setGeometry(QRect(250, 310, 80, 32))
+
+        self.remove2Button = QPushButton("제거", self.groupBox)
+        self.remove2Button.setGeometry(QRect(350, 310, 80, 32))
+
+        self.useLastPDFNameCheckbox = QCheckBox("왼쪽 파일이름 사용", self)
+        self.useLastPDFNameCheckbox.setGeometry(QRect(20, 400, 200, 31))
+        
+        self.sortLeftButton = QPushButton("날짜 정렬", self)
+        self.sortLeftButton.setGeometry(QRect(140, 27, 80, 25))
+
+        self.sortRightButton = QPushButton("날짜 정렬", self)
+        self.sortRightButton.setGeometry(QRect(370, 27, 80, 25))
+      
+
+
+    def setupListboxes(self):
+        self.leftListWidget = ListboxWidget2(self.groupBox)
+        self.leftListWidget.setGeometry(QRect(20, 30, 180, 250))
+
+        self.rightListWidget = ListboxWidget3(self.groupBox)
+        self.rightListWidget.setGeometry(QRect(250, 30, 180, 250))
+
+    def setupConnections(self):
+        self.add2Button.clicked.connect(self.add_PDF_to_right)
+        self.remove2Button.clicked.connect(self.del_PDF_from_right)
+        self.addButton.clicked.connect(self.add_PDF_to_left)
+        self.removeButton.clicked.connect(self.del_PDF_from_left)
+        self.mergeSameNamePDFButton.clicked.connect(self.merge_same_name_PDF)
+        self.sortRightButton.clicked.connect(self.sort_right_PDF_by_date)
+        self.sortLeftButton.clicked.connect(self.sort_left_PDF_by_date)
+
+
+    def add_PDF_to_right(self):
+        file_dialog = QFileDialog(self, "파일 열기", "", "PDF 파일(*.pdf)")
+        file_dialog.setFileMode(QFileDialog.ExistingFiles)
+        self.selected_list_widget = self.rightListWidget
+
+        if file_dialog.exec_():
+            selected_files = file_dialog.selectedFiles()
+            for file_path in selected_files:
+                if not os.path.isdir(file_path):
+                    file_name = os.path.basename(file_path)
+                    self.rightListWidget.addItem(file_name)
+                    self.rightListWidget.right_paths[file_name] = file_path
+
+                   
+
+    def del_PDF_from_right(self):
+        selected_items = self.rightListWidget.selectedItems()
+        for item in selected_items:
+            self.rightListWidget.takeItem(self.rightListWidget.row(item))
+
+    def add_PDF_to_left(self):
+        file_dialog = QFileDialog(self, "파일 열기", "", "PDF 파일(*.pdf)")
+        file_dialog.setFileMode(QFileDialog.ExistingFiles)
+        self.selected_list_widget = self.leftListWidget
+
+        if file_dialog.exec_():
+            selected_files = file_dialog.selectedFiles()
+            for file_path in selected_files:
+                if not os.path.isdir(file_path):
+                    file_name = os.path.basename(file_path)
+                    self.leftListWidget.addItem(file_name)
+                    self.leftListWidget.left_paths[file_name] = file_path
+
+    def del_PDF_from_left(self):
+        selected_items = self.leftListWidget.selectedItems()
+        for item in selected_items:
+            self.leftListWidget.takeItem(self.leftListWidget.row(item))
+
+    def sort_left_PDF_by_date(self):
+        left_file_paths = self.leftListWidget.left_paths
+
+        left_file_info_list = []
+
+        for left_name, left_path in left_file_paths.items():
+            left_file_info = (left_name, os.path.getmtime(left_path))
+            left_file_info_list.append(left_file_info)
+
+        sorted_left_file_info_list = sorted(left_file_info_list, key=lambda x: x[1], reverse=not self.left_sort_ascending)
+
+        self.leftListWidget.clear()
+
+        for left_name, _ in sorted_left_file_info_list:
+            self.leftListWidget.addItem(left_name)
+
+        self.left_sort_ascending = not self.left_sort_ascending
+
+    def sort_right_PDF_by_date(self):
+        right_file_paths = self.rightListWidget.right_paths
+
+        right_file_info_list = []
+
+        for right_name, right_path in right_file_paths.items():
+            right_file_info = (right_name, os.path.getmtime(right_path))
+            right_file_info_list.append(right_file_info)
+
+        sorted_right_file_info_list = sorted(right_file_info_list, key=lambda x: x[1], reverse=not self.right_sort_ascending)
+
+        self.rightListWidget.clear()
+
+        for right_name, _ in sorted_right_file_info_list:
+            self.rightListWidget.addItem(right_name)
+
+        self.right_sort_ascending = not self.right_sort_ascending
+    def merge_same_name_PDF(self):
+        left_items = [self.leftListWidget.item(i) for i in range(self.leftListWidget.count())]
+        right_items = [self.rightListWidget.item(i) for i in range(self.rightListWidget.count())]
+
+        save_dir = PDFManagement.save_path
+
+        if not save_dir:
+            save_dir = QFileDialog.getExistingDirectory(self, "저장 폴더 선택")
+
+        if save_dir:
+            PDFManagement.save_path = save_dir 
+
+            for left_item, right_item in zip(left_items, right_items):
+                left_name = left_item.text()
+                left_path = self.leftListWidget.left_paths[left_name]
+
+                right_name = right_item.text()
+                right_path = self.rightListWidget.right_paths[right_name]
+
+                merged_pdf_path = os.path.join(save_dir, right_name)  
+
+                pdf_document = PdfWriter() 
+
+                left_pdf = PdfReader(open(left_path, 'rb'))
+                for page_num in range(len(left_pdf.pages)):
+                    pdf_document.add_page(left_pdf.pages[page_num]) 
+
+                right_pdf = PdfReader(open(right_path, 'rb'))
+                for page_num in range(len(right_pdf.pages)):
+                    pdf_document.add_page(right_pdf.pages[page_num]) 
+
+                with open(merged_pdf_path, 'wb') as merged_pdf_file:
+                    pdf_document.write(merged_pdf_file)
+
+            QMessageBox.information(self, '성공', "PDF가 성공적으로 병합되었습니다.", QMessageBox.Yes)
+        else:
+            QMessageBox.warning(self, '경고', "저장 경로가 지정되지 않았습니다.", QMessageBox.Yes)
+        
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+        
+    def initUI(self):
+        self.setupMenuBar()
+        self.setupCentralWidget()
+        self.setMinimumSize(500, 550)  
+    def setupMenuBar(self):
+        menu = self.menuBar()
+        menu_pdf = menu.addMenu('PDF')
+
+        self.pdf_management = QAction('PDF 관리', self)
+        menu_pdf.addAction(self.pdf_management)
+
+        self.pdf_save_path = QAction('PDF 저장 경로 설정', self)
+        menu_pdf.addAction(self.pdf_save_path)
+
+        self.pdf_pdf_merge = QAction('PDF-PDF 자동 합치기', self)
+        menu_pdf.addAction(self.pdf_pdf_merge)
+
+        self.pdf_management.triggered.connect(self.show_pdf_management)
+        self.pdf_save_path.triggered.connect(self.set_save_path)
+        self.pdf_pdf_merge.triggered.connect(self.show_pdf_pdf_merge)
+
+    def setupCentralWidget(self):
+        self.widget = MainWidget()
+        self.setCentralWidget(self.widget)
+        self.resize(500, 550)
+        self.setWindowTitle("PDF App")
+        self.setFixedSize(500, 550)
+        self.show()
+
+    def show_pdf_management(self):
+        pdf_management_widget = PDFManagement()
+        self.setCentralWidget(pdf_management_widget)
+
+    def set_save_path(self):
+        directory = QFileDialog.getExistingDirectory(self, "저장 폴더 선택")
+        if directory:
+            PDFManagement.save_path = directory
+
+    def show_pdf_pdf_merge(self):
+        pdf_pdf_merge_widget = PDFautoManagement()
+        self.setCentralWidget(pdf_pdf_merge_widget)
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    sys.exit(app.exec_())
